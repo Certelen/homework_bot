@@ -14,10 +14,10 @@ load_dotenv()
 
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
+    level=logging.DEBUG,
     handlers=[
+        logging.FileHandler('program.log', encoding='utf-8'),
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('program.log', encoding='utf-8', mode='a')
     ])
 
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
@@ -97,7 +97,7 @@ def send_message(bot, message):
         else:
             logging.debug(f'Бот отправил сообщение:{message}')
     else:
-        logging.info(f'Повторное сообщение:{message}')
+        logging.debug(f'Повторное сообщение:{message}')
 
 
 def main():
