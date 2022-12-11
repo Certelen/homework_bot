@@ -14,7 +14,7 @@ load_dotenv()
 
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG,
+    level=logging.INFO,
     handlers=[
         logging.FileHandler('program.log'),
         logging.StreamHandler(sys.stdout),
