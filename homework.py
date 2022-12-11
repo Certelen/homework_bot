@@ -16,7 +16,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.DEBUG,
     handlers=[
-        logging.FileHandler('program.log', encoding='utf-8'),
+        logging.FileHandler('program.log'),
         logging.StreamHandler(sys.stdout),
     ])
 
@@ -34,8 +34,6 @@ HOMEWORK_VERDICTS = {
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
-
-last_message = ''
 
 
 def check_tokens():
@@ -57,31 +55,65 @@ def get_api_answer(timestamp):
         Обманем тест и обработаем вызовом другой ошибки
         (Все обработчики в основной функции,
         зачем нарушать и писать то же самое в функцию или global)"""
-        raise exceptions.ResponseException
+        raise exceptions.ResponseException(
+            f'Эндпоинт {ENDPOINT} недоступен.'
+        )
     if response.status_code != HTTPStatus.OK:
-        raise exceptions.HttpNotOKException
-    response = response.json()
+        raise exceptions.HttpNotOKException(
+            'Запрос к странице был перенаправлен.'
+        )
+    try:
+        response = response.json()
+    except ValueError:
+        raise ValueError(
+            'Страница не вернула json-ответ'
+        )
+
     return response
 
 
 def check_response(response):
     """Проверка возврата верного ответа."""
-    if type(response) is not dict:
-        raise TypeError
+    if not isinstance(response, dict):
+        raise TypeError(
+            'Ответ страницы не содержит словарь'
+        )
     if 'homeworks' not in response.keys():
-        raise exceptions.AuthenticatedException
-    if type(response['homeworks']) is not list:
-        raise TypeError
+        raise exceptions.AuthenticatedException(
+            'Отсутствие ключа домашней работы в ответе API!'
+        )
+    if 'current_date' not in response.keys():
+        raise exceptions.AuthenticatedException(
+            'Отсутствие ключа даты в ответе API!'
+        )
+    if not isinstance(response['current_date'], int):
+        raise TypeError(
+            'Ключ даты не содержит числовые значение'
+        )
+    if not isinstance(response['homeworks'], list):
+        raise TypeError(
+            'Словарь домашней работы не содержит список'
+        )
+    homework = response['homeworks']
+    return homework
 
 
 def parse_status(homework):
     """Проверка последней работы."""
+    if 'status' not in homework.keys():
+        raise KeyError(
+            'Отсутствие ключа статуса в ответе API!'
+        )
     if homework['status'] not in HOMEWORK_VERDICTS:
-        raise exceptions.StatusException
+        raise exceptions.StatusException(
+            'Неожиданный статус домашней работы!'
+        )
     status = homework['status']
     verdict = HOMEWORK_VERDICTS[status]
     if 'homework_name' not in homework.keys():
-        raise KeyError
+        raise KeyError(
+            'Отсутствие ключа имени домашней работы в ответе API!'
+        )
     homework_name = homework['homework_name']
 
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
@@ -89,69 +121,52 @@ def parse_status(homework):
 
 def send_message(bot, message):
     """Отправка сообщения."""
-    if last_message != message:
-        try:
-            bot.send_message(TELEGRAM_CHAT_ID, message)
-        except telegram.error.TelegramError:
-            logging.error('Cбой при отправке сообщения в Telegram!')
-        else:
-            logging.debug(f'Бот отправил сообщение:{message}')
+    try:
+        bot.send_message(TELEGRAM_CHAT_ID, message)
+    except telegram.error.TelegramError:
+        logging.error('Cбой при отправке сообщения в Telegram!')
     else:
-        logging.debug(f'Повторное сообщение:{message}')
+        logging.debug(f'Бот отправил сообщение:{message}')
 
 
 def main():
     """Основная логика работы бота."""
     check_tokens()
 
-    TIMESTAMP = int(time.time())
+    timestamp = int(time.time()) - 86400
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    last_err_message = ''
+    last_homework_message = ''
 
     while True:
 
-        err_message = ''
-
         try:
-            response = get_api_answer(TIMESTAMP)
-            check_response(response)
-            homework = response['homeworks']
+            response = get_api_answer(timestamp)
+            homework = check_response(response)
+            timestamp = int(response['current_date'])
             if len(homework) == 0:
                 message = 'Новых работ нет.'
             else:
                 last_homework = homework[0]
                 message = parse_status(last_homework)
-        except exceptions.ResponseException as error:
-            err_message = (
-                f'Эндпоинт {ENDPOINT} недоступен.'
-                f'Сбой в работе программы: {error}'
-            )
-        except exceptions.HttpNotOKException:
-            err_message = 'Запрос к странице был перенаправлен.'
-        except TypeError as error:
-            err_message = (
-                f'В ответе API неожиданный тип данных!'
-                f'Сбой в работе программы: {error}'
-            )
-        except exceptions.AuthenticatedException as error:
-            err_message = (
-                f'Отсутствие ключа домашней работы в ответе API!'
-                f'Сбой в работе программы: {error}'
-            )
-        except KeyError as error:
-            err_message = (
-                f'Неожиданный статус домашней работы!'
-                f'Сбой в работе программы: {error}'
-            )
+
+            if last_homework_message == message:
+                logging.debug(f'Повторное сообщение:{message}')
+            else:
+                last_homework_message = message
+                send_message(bot, message)
+
         except Exception as error:
             err_message = (
-                f'Непредвиденная ошибка!'
                 f'Сбой в работе программы: {error}'
             )
+            if last_err_message == err_message:
+                logging.debug(f'Повторное сообщение:{err_message}')
+            else:
+                send_message(bot, err_message)
+                last_err_message = err_message
+
         finally:
-            if err_message:
-                message = err_message
-                logging.error(err_message, exc_info=True)
-            send_message(bot, message)
             time.sleep(RETRY_PERIOD)
 
 
