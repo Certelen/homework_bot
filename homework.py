@@ -82,6 +82,7 @@ def check_response(response):
         raise exceptions.AuthenticatedException(
             'Отсутствие ключа домашней работы в ответе API!'
         )
+    homeworks = response['homeworks']
     if 'current_date' not in response.keys():
         raise exceptions.AuthenticatedException(
             'Отсутствие ключа даты в ответе API!'
@@ -90,11 +91,11 @@ def check_response(response):
         raise TypeError(
             'Ключ даты не содержит числовые значение'
         )
-    if not isinstance(response['homeworks'], list):
+    if not isinstance(homeworks, list):
         raise TypeError(
             'Словарь домашней работы не содержит список'
         )
-    return response['homeworks']
+    return homeworks
 
 
 def parse_status(homework):
