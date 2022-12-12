@@ -94,21 +94,21 @@ def check_response(response):
         raise TypeError(
             'Словарь домашней работы не содержит список'
         )
-    homework = response['homeworks']
-    return homework
+    return response['homeworks']
 
 
 def parse_status(homework):
     """Проверка последней работы."""
+    status = homework['status']
+
     if 'status' not in homework.keys():
         raise KeyError(
             'Отсутствие ключа статуса в ответе API!'
         )
-    if homework['status'] not in HOMEWORK_VERDICTS:
+    if status not in HOMEWORK_VERDICTS:
         raise exceptions.StatusException(
             'Неожиданный статус домашней работы!'
         )
-    status = homework['status']
     verdict = HOMEWORK_VERDICTS[status]
     if 'homework_name' not in homework.keys():
         raise KeyError(
@@ -123,10 +123,9 @@ def send_message(bot, message):
     """Отправка сообщения."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
+        logging.debug(f'Бот отправил сообщение:{message}')
     except telegram.error.TelegramError:
         logging.error('Cбой при отправке сообщения в Telegram!')
-    else:
-        logging.debug(f'Бот отправил сообщение:{message}')
 
 
 def main():
@@ -136,25 +135,20 @@ def main():
     timestamp = int(time.time()) - 86400
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     last_err_message = ''
-    last_homework_message = ''
 
     while True:
 
         try:
             response = get_api_answer(timestamp)
             homework = check_response(response)
-            timestamp = int(response['current_date'])
+            timestamp = response['current_date']
             if len(homework) == 0:
-                message = 'Новых работ нет.'
+                continue
             else:
                 last_homework = homework[0]
                 message = parse_status(last_homework)
-
-            if last_homework_message == message:
-                logging.debug(f'Повторное сообщение:{message}')
-            else:
-                last_homework_message = message
                 send_message(bot, message)
+            last_err_message = ''
 
         except Exception as error:
             err_message = (
